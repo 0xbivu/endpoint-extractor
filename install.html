@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Endpoint Extractor</title>
+<body style="font:16px system-ui;max-width:640px;margin:40px auto;padding:0 16px">
+<h1>Endpoint Extractor</h1>
+<p>Drag this to your bookmarks bar: <a id="bm" style="padding:6px 12px;background:#222;color:#fff;border-radius:6px;text-decoration:none">Extract Endpoints</a></p>
+<p>Then open any site and click the bookmark. Click it here to try it on this page.</p>
+<a href="/api/v1/test-endpoint" hidden></a>
+<script>
+function extractor() {
+  // quoted strings that look like paths or URLs: "/api/x", "https://...", "./x", "../x"
+  const re = /["'`](\/[^"'`\s<>]+|https?:\/\/[^"'`\s<>]+|\.\.?\/[^"'`\s<>]+)["'`]/g;
+  const found = new Set();
+  const scan = t => { for (const m of t.matchAll(re)) found.add(m[1]); };
+
+  scan(document.documentElement.outerHTML); // inline scripts + html attributes
+  // external scripts, plus lazy-loaded chunks the browser already fetched
+  const srcs = new Set([
+    ...[...document.scripts].map(s => s.src).filter(Boolean),
+    ...performance.getEntriesByType('resource').map(e => e.name).filter(n => /\.js(\?|#|$)/.test(n)),
+  ]);
+  // cross-origin scripts without CORS headers fail silently (ponytail: no proxy, add one if CDN-hosted JS matters)
+  Promise.all([...srcs].map(u => fetch(u).then(r => r.text()).then(scan).catch(() => {}))).then(() => {
+    document.getElementById('__ep')?.remove();
+    const box = document.createElement('div');
+    box.id = '__ep';
+    box.style.cssText = 'position:fixed;inset:5%;z-index:2147483647;background:#111;color:#eee;padding:12px;border-radius:8px;font:13px monospace;display:flex;flex-direction:column;gap:8px;box-shadow:0 0 40px #000';
+    const head = document.createElement('div');
+    head.textContent = found.size + ' endpoints from ' + (srcs.size + 1) + ' sources ';
+    const close = document.createElement('button');
+    close.textContent = 'close';
+    close.onclick = () => box.remove();
+    head.append(close);
+    const ta = document.createElement('textarea');
+    ta.style.cssText = 'flex:1;background:#000;color:#0f0;font:13px monospace;border:0;padding:8px';
+    ta.value = [...found].sort().join('\n');
+    box.append(head, ta);
+    document.body.append(box);
+    ta.select();
+  });
+}
+document.getElementById('bm').href = 'javascript:(' + encodeURIComponent(extractor.toString()) + ')()';
+</script>
